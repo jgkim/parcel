@@ -43,8 +43,12 @@ class HTMLAsset extends Asset {
       if (node.attrs) {
         for (let attr in node.attrs) {
           let elements = ATTRS[attr];
+          // Check for virtual paths
+          if (node.tag === 'a' && node.attrs[attr].lastIndexOf('.') < 1) {
+            continue;
+          }
           if (elements && elements.includes(node.tag)) {
-            let assetPath = this.addURLDependency(node.attrs[attr]);
+            let assetPath = this.addURLDependency(decodeURIComponent(node.attrs[attr]));
             if (!isURL(assetPath)) {
               assetPath = urlJoin(this.options.publicURL, assetPath);
             }
@@ -58,7 +62,7 @@ class HTMLAsset extends Asset {
     });
   }
 
-  async transform() {
+  async pretransform() {
     await posthtmlTransform(this);
   }
 

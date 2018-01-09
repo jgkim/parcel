@@ -14,6 +14,7 @@ const PackagerRegistry = require('./packagers');
 const localRequire = require('./utils/localRequire');
 const config = require('./utils/config');
 const emoji = require('./utils/emoji');
+const loadEnv = require('./utils/env');
 
 /**
  * The Bundler is the main entry point. It resolves and loads assets,
@@ -64,7 +65,8 @@ class Bundler extends EventEmitter {
         typeof options.minify === 'boolean' ? options.minify : isProduction,
       hmr: typeof options.hmr === 'boolean' ? options.hmr : watch,
       logLevel: typeof options.logLevel === 'number' ? options.logLevel : 3,
-      mainFile: this.mainFile
+      mainFile: this.mainFile,
+      hmrPort: options.hmrPort || 0
     };
   }
 
@@ -175,8 +177,10 @@ class Bundler extends EventEmitter {
     }
 
     await this.loadPlugins();
+    await loadEnv(this.mainFile);
 
     this.options.extensions = Object.assign({}, this.parser.extensions);
+    this.options.env = process.env;
     this.farm = WorkerFarm.getShared(this.options);
 
     if (this.options.watch) {
@@ -191,7 +195,7 @@ class Bundler extends EventEmitter {
 
     if (this.options.hmr) {
       this.hmr = new HMRServer();
-      this.options.hmrPort = await this.hmr.start();
+      this.options.hmrPort = await this.hmr.start(this.options.hmrPort);
     }
   }
 
@@ -406,6 +410,15 @@ class Bundler extends EventEmitter {
       bundle.addAsset(asset);
     }
 
+    // Add the asset to sibling bundles for each generated type
+    if (asset.type && asset.generated[asset.type]) {
+      for (let t in asset.generated) {
+        if (asset.generated[t]) {
+          bundle.getSiblingBundle(t).addAsset(asset);
+        }
+      }
+    }
+
     asset.parentBundle = bundle;
 
     for (let dep of asset.dependencies.values()) {
@@ -473,6 +486,7 @@ class Bundler extends EventEmitter {
   }
 
   middleware() {
+    this.bundle();
     return Server.middleware(this);
   }
 
